@@ -10,7 +10,7 @@ TWILIO_ACCOUNT_SID = "AC9b0b3cd58ad339916c3b7e02449eed0b"
 TWILIO_AUTH_TOKEN = "8131b7b98e59ce7c08b7685847cc5a50"
 
 # Sandbox WhatsApp number (default Twilio sandbox number)
-TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886"
+TWILIO_WHATSAPP_FROM = "+14155238886"
 
 # Create Twilio client
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
