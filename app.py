@@ -1,187 +1,70 @@
-# ===============================
-# SIMPLE STREAMLIT REMINDER APP
-# MADE LIKE A 5TH CLASS STUDENT
-# WITH COMMENTS ON EVERY LINE
-# ===============================
+import streamlit as st                # This imports Streamlit so we can make a web app
+from twilio.rest import Client        # This imports Twilio for sending SMS
+from datetime import datetime, timedelta # This helps with date and time
+import threading                      # This helps us wait and send SMS later
 
-import streamlit as st               # Streamlit for our website
-from twilio.rest import Client       # Twilio for sending SMS
-import json                          # To save reminders in a file
-import os                            # To talk to computer system
-from datetime import datetime, date, time  # To work with dates and time
+# Turn off dark mode by setting a light theme in Streamlit
 
-# -------------------------------
-# FILE NAME WHERE WE SAVE DATA
-# -------------------------------
-DATA_FILE = "reminders.json"
+st.set_page_config(page_title="Simple SMS Reminder", layout="centered")
 
-# -------------------------------
-# GET TWILIO INFORMATION
-# (TAKEN FROM SYSTEM ENVIRONMENT)
-# -------------------------------
-TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")        # Twilio account SID
-TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")       # Twilio auth token
-TWILIO_FROM = os.getenv("TWILIO_FROM_NUMBER")       # Twilio phone number
+# Make the title of the app
 
-# -------------------------------
-# CREATE TWILIO CLIENT IF POSSIBLE
-# -------------------------------
-def get_twilio_client():
-    # If any Twilio detail missing, return None
-    if not TWILIO_SID or not TWILIO_TOKEN or not TWILIO_FROM:
-        return None
-    # Otherwise return working client
-    return Client(TWILIO_SID, TWILIO_TOKEN)
+st.title("🕒 Simple SMS Reminder App")
 
-# -------------------------------
-# LOAD REMINDERS FROM FILE
-# -------------------------------
-def load_data():
-    # If file does not exist, return empty list
-    if not os.path.exists(DATA_FILE):
-        return []
+# Ask the user to enter Twilio details
 
-    # Read JSON file safely
-    try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return []
+st.subheader("Enter Twilio Details")
+sid = st.text_input("Twilio Account SID")   # Where user types the SID
+token = st.text_input("Twilio Auth Token")  # Where user types the token
+from_number = st.text_input("Twilio From Number")  # Number to send SMS from
 
-# -------------------------------
-# SAVE REMINDERS TO FILE
-# -------------------------------
-def save_data(reminders):
-    with open(DATA_FILE, "w") as f:
-        json.dump(reminders, f, indent=2)
+# Divider line
 
-# -------------------------------
-# SEND SMS USING TWILIO
-# -------------------------------
-def send_sms(phone, message):
-    client = get_twilio_client()          # Get Twilio client
+st.markdown("---")
 
-    if client is None:
-        return False, "Missing Twilio details."
+# Ask the user to enter reminder information
 
-    try:
-        # Try sending SMS
-        msg = client.messages.create(
-            body=message,
-            from_=TWILIO_FROM,
-            to=phone
-        )
-        return True, msg.sid
-    except Exception as e:
-        return False, str(e)
+st.subheader("Set Reminder")
 
-# ======================================================
-# STREAMLIT UI - OUR SIMPLE WEBPAGE
-# ======================================================
-st.set_page_config(
-    page_title="Simple Reminder",
-    layout="centered"
+phone = st.text_input("Phone Number to Send SMS (Example: +919876543210)")  # Phone number
+message = st.text_area("Reminder Message")                                  # Reminder text
+reminder_date = st.date_input("Select Date")                                # Date of reminder
+reminder_time = st.time_input("Select Time")                                # Time of reminder
+
+# Function to send SMS
+
+def send_sms():
+client = Client(sid, token)                      # This creates a Twilio client
+client.messages.create(                          # This sends the SMS
+body=message,                                # SMS text
+from_=from_number,                           # The Twilio number
+to=phone                                     # Number to send to
 )
+st.success("Message Sent!")                      # Show a success message
 
-# Title on top
-st.title("📱 Super Simple SMS Reminder App")
+# Function to calculate how many seconds to wait
 
-st.write("This app sends reminders as SMS using Twilio.")
+def schedule_sms():
+trigger_datetime = datetime.combine(reminder_date, reminder_time)   # Combine date + time
+current_datetime = datetime.now()                                   # Get current datetime
+delay = (trigger_datetime - current_datetime).total_seconds()       # How long to wait
 
-# ------------------------------------------------------
-# LOAD EXISTING REMINDERS
-# ------------------------------------------------------
-reminders = load_data()
+```
+if delay < 0:                                                       # If time already gone
+    st.error("Selected time already passed!")                       # Show error
+    return
 
-# ------------------------------------------------------
-# FORM TO ADD A NEW REMINDER
-# ------------------------------------------------------
-st.header("Add a new reminder")
+timer = threading.Timer(delay, send_sms)                           # Wait until time
+timer.start()                                                      # Start waiting
+```
 
-# User enters message text
-message = st.text_input(
-    "What should we remind you?",
-    value="Drink water"
-)
+# Button to schedule the reminder
 
-# User enters phone number
-phone = st.text_input(
-    "Phone number (example: +919999888877)",
-    value=""
-)
-
-# User chooses date
-r_date = st.date_input(
-    "Choose a date",
-    value=date.today()
-)
-
-# User chooses time
-r_time = st.time_input(
-    "Choose a time",
-    value=datetime.now().time().replace(second=0, microsecond=0)
-)
-
-# User presses button to save reminder
-if st.button("Save Reminder"):
-    # Convert chosen date & time into a single datetime
-    reminder_dt = datetime.combine(r_date, r_time)
-
-    # Make a reminder dictionary to store
-    reminders.append({
-        "message": message,
-        "phone": phone,
-        "time": reminder_dt.isoformat(),
-        "sent": False
-    })
-
-    # Save to file
-    save_data(reminders)
-
-    # Tell user it's saved
-    st.success("🎉 Reminder saved!")
-
-    # Refresh page so new reminder shows up
-    st.rerun()
-
-# ------------------------------------------------------
-# CHECK IF ANY REMINDER TIME HAS COME
-# ------------------------------------------------------
-now = datetime.now()  # current time
-
-for reminder in reminders:
-    # Only check reminders not sent yet
-    if not reminder.get("sent", False):
-        # Convert saved time string to datetime
-        r_time = datetime.fromisoformat(reminder["time"])
-
-        # If current time is past reminder time
-        if now >= r_time:
-            # Try sending SMS
-            ok, info = send_sms(
-                reminder["phone"],
-                reminder["message"]
-            )
-
-            if ok:
-                # Mark as sent
-                reminder["sent"] = True
-                save_data(reminders)
-                st.success(f"SMS sent: {reminder['message']}")
-            else:
-                st.error("SMS sending failed: " + info)
-
-# ------------------------------------------------------
-# SHOW ALL REMINDERS ON SCREEN
-# ------------------------------------------------------
-st.header("All reminders")
-
-if len(reminders) == 0:
-    st.info("No reminders yet.")
+if st.button("Schedule Reminder"):
+if not sid or not token or not from_number:                       # Check Twilio details entered
+st.error("Please fill all Twilio details!")
+elif not message or not phone:                                    # Check reminder details
+st.error("Please enter message and phone number!")
 else:
-    for r in reminders:
-        st.write("Message:", r["message"])
-        st.write("Phone:", r["phone"])
-        st.write("Time:", r["time"])
-        st.write("Sent:", "Yes" if r["sent"] else "No")
-        st.write("---")
+schedule_sms()                                                # Call function to schedule
+st.success("Reminder Scheduled!")
