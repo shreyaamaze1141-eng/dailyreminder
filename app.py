@@ -1,157 +1,106 @@
-import streamlit as st
-from twilio.rest import Client
-import json
-import datetime
-import time
-import threading
+# Import required libraries
+import streamlit as st            # Streamlit for web app UI
+from twilio.rest import Client    # Twilio for sending SMS
+from datetime import datetime, date, time   # For date & time handling
 
-REMINDER_FILE = "reminders.json"
-
-
-# -------------------------------
-# SAVE & LOAD REMINDERS
-# -------------------------------
-def load_reminders():
-    try:
-        with open(REMINDER_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return []
-
-
-def save_reminders(reminders):
-    with open(REMINDER_FILE, "w") as f:
-        json.dump(reminders, f, indent=4)
-
-
-# -------------------------------
-# SEND MESSAGE (SMS / WhatsApp)
-# -------------------------------
-def send_message(text, client, from_number, to_number):
-    try:
-        message = client.messages.create(
-            body=text,
-            from_=from_number,
-            to=to_number
-        )
-        print("Message sent:", message.sid)
-    except Exception as e:
-        print("Sending failed:", e)
-
-
-# -------------------------------
-# BACKGROUND SCHEDULER LOOP
-# -------------------------------
-def scheduler_loop():
-    while True:
-
-        if all(k in st.session_state for k in ("sid", "token", "from", "to")):
-
-            client = Client(st.session_state.sid, st.session_state.token)
-            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-
-            reminders = load_reminders()
-            updated = False
-
-            for r in reminders:
-                # Check if time AND date match and message not already sent
-                if r["datetime"] == now and not r.get("sent", False):
-                    send_message(
-                        f"⏰ Reminder: {r['text']}",
-                        client,
-                        st.session_state["from"],
-                        st.session_state["to"]
-                    )
-                    r["sent"] = True
-                    updated = True
-
-            if updated:
-                save_reminders(reminders)
-
-        time.sleep(60)  # Check once every minute
-
-
-# Start scheduler once
-if "scheduler_started" not in st.session_state:
-    threading.Thread(target=scheduler_loop, daemon=True).start()
-    st.session_state.scheduler_started = True
-
-
-# -------------------------------
-# STREAMLIT UI
-# -------------------------------
-st.set_page_config(page_title="Daily SMS Reminder", layout="centered")
-st.title("📅 SMS Reminder App")
-
-
-# --------------------------------
-# Twilio Credentials Input
-# --------------------------------
-st.subheader("🔐 Enter Twilio Credentials")
-
-sid = st.text_input("Twilio ACCOUNT SID")
-token = st.text_input("Twilio AUTH TOKEN", type="password")
-
-from_number = st.text_input(
-    "Twilio From Number",
-    placeholder="whatsapp:+14155238886 or +1234567890"
+# Set Streamlit page configuration
+st.set_page_config(
+    page_title="Daily SMS Reminder",   # Title shown in browser tab
+    layout="centered"                  # Center page layout
 )
 
-to_number = st.text_input(
-    "Your Number",
-    placeholder="whatsapp:+91XXXXXXXXXX or +91XXXXXXXXXX"
+# ----------------------------------------------------
+# Initialize session state to store reminders
+# ----------------------------------------------------
+if "reminders" not in st.session_state:            # Check if reminders list exists
+    st.session_state["reminders"] = []             # Create empty list for reminders
+
+# ----------------------------------------------------
+# Input section where user enters the data
+# ----------------------------------------------------
+st.title("📱 Daily SMS Reminder")                  # Main app title
+
+task_text = st.text_input(                         # Input box for reminder text
+    "Reminder Text"
 )
 
-if st.button("Save Twilio Settings"):
-    if sid and token and from_number and to_number:
-        st.session_state.sid = sid
-        st.session_state.token = token
-        st.session_state["from"] = from_number
-        st.session_state["to"] = to_number
-        st.success("Twilio settings saved!")
-    else:
-        st.error("Please fill all fields.")
+task_date = st.date_input(                         # Date picker
+    "Select Date",
+    date.today()                                   # Default is today's date
+)
 
+task_time = st.time_input(                         # Time picker
+    "Select Time (HH:MM)",
+    datetime.now().time()                          # Default is current time
+)
 
-if not all(k in st.session_state for k in ("sid", "token", "from", "to")):
-    st.warning("Enter Twilio settings above to continue.")
-    st.stop()
+phone_number = st.text_input(                      # Phone number to send SMS
+    "Send To Mobile Number (+91XXXXXXXXXX)"
+)
 
+twilio_sid = st.text_input(                        # Twilio SID input
+    "Twilio Account SID",
+    type="password"                                # Hide input for safety
+)
 
-# -------------------------------
-# REMINDER FORM
-# -------------------------------
-st.subheader("⏰ Add a Reminder")
+twilio_auth = st.text_input(                       # Twilio Auth Token input
+    "Twilio Auth Token",
+    type="password"                                # Hidden input
+)
 
-reminders = load_reminders()
+twilio_from = st.text_input(                       # Twilio Sender number
+    "Twilio From Number (+1XXXXXXXXXX)"
+)
 
-reminder_text = st.text_input("Reminder Text")
+# ----------------------------------------------------
+# Save reminder into session
+# ----------------------------------------------------
+if st.button("Save Reminder"):                     # Button clicked to save reminder
+    reminder_dt = datetime.combine(                # Combine date and time to one datetime
+        task_date, task_time
+    )
 
-reminder_date = st.date_input("Pick a Date", datetime.date.today())
-reminder_time = st.time_input("Pick Time", datetime.time(9, 0))
-
-if st.button("Save Reminder"):
-    reminder_datetime = datetime.datetime.combine(reminder_date, reminder_time)
-    reminders.append({
-        "text": reminder_text,
-        "datetime": reminder_datetime.strftime("%Y-%m-%d %H:%M"),
-        "sent": False
+    st.session_state["reminders"].append({         # Add new reminder to session list
+        "text": task_text,                         # Save reminder text
+        "datetime": reminder_dt.strftime("%Y-%m-%d %H:%M"),  # Save date and time formatted
+        "phone": phone_number                      # Save target phone number
     })
-    save_reminders(reminders)
-    st.success("Reminder saved!")
 
+    st.success("Reminder saved successfully!")     # Show success message
 
-# -------------------------------
-# SHOW REMINDERS
-# -------------------------------
-st.subheader("📋 Saved Reminders")
+# ----------------------------------------------------
+# Display saved reminders to user
+# ----------------------------------------------------
+st.subheader("📋 Saved Reminders")                 # Section heading
 
-if len(reminders) == 0:
-    st.info("No reminders yet.")
+if len(st.session_state["reminders"]) > 0:         # Check if reminders exist
+    for r in st.session_state["reminders"]:        # Loop through reminders
+        text = r.get("text", "No Text")            # Fetch reminder text safely
+        dt = r.get("datetime", "No Time")          # Fetch date/time safely
+        phone = r.get("phone", "Unknown")          # Fetch phone safely
+
+        st.write(                                   # Display reminder in formatted line
+            f"- **{text}** at `{dt}` → 📱 {phone}"
+        )
 else:
-    for r in reminders:
-        st.write(f"- **{r['text']}** at `{r['datetime']}`")
+    st.write("No reminders saved yet.")             # If no reminders exist, say so
 
-if st.button("Clear All Reminders"):
-    save_reminders([])
-    st.warning("All reminders deleted.")
+# ----------------------------------------------------
+# Button to manually trigger SMS sending
+# ----------------------------------------------------
+if st.button("Send Test SMS Now"):                  # When button is clicked
+    if not all([twilio_sid, twilio_auth, twilio_from, phone_number]):
+        st.error("Missing Twilio details or phone number!")  # Show error if required fields missing
+    else:
+        try:
+            client = Client(twilio_sid, twilio_auth)          # Initialize Twilio client
+
+            msg = client.messages.create(                     # Send SMS
+                body=f"Test message: {task_text}",            # Message content
+                from_=twilio_from,                            # Twilio sender number
+                to=phone_number                               # Target user number
+            )
+
+            st.success("SMS sent successfully!")              # Display success
+        except Exception as e:
+            st.error(f"SMS sending failed: {e}")              # Show error in case of failure
