@@ -25,7 +25,7 @@ def save_reminders(reminders):
 
 
 # -------------------------------
-# SEND MESSAGE
+# SEND MESSAGE (SMS / WhatsApp)
 # -------------------------------
 def send_message(text, client, from_number, to_number):
     try:
@@ -44,17 +44,18 @@ def send_message(text, client, from_number, to_number):
 # -------------------------------
 def scheduler_loop():
     while True:
-        # Check if the user has entered Twilio details first
+
         if all(k in st.session_state for k in ("sid", "token", "from", "to")):
 
             client = Client(st.session_state.sid, st.session_state.token)
-            now = datetime.datetime.now().strftime("%H:%M")
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
             reminders = load_reminders()
             updated = False
 
             for r in reminders:
-                if r["time"] == now and not r.get("sent", False):
+                # Check if time AND date match and message not already sent
+                if r["datetime"] == now and not r.get("sent", False):
                     send_message(
                         f"⏰ Reminder: {r['text']}",
                         client,
@@ -67,7 +68,7 @@ def scheduler_loop():
             if updated:
                 save_reminders(reminders)
 
-        time.sleep(60)
+        time.sleep(60)  # Check once every minute
 
 
 # Start scheduler once
@@ -79,72 +80,77 @@ if "scheduler_started" not in st.session_state:
 # -------------------------------
 # STREAMLIT UI
 # -------------------------------
-st.set_page_config(page_title="Daily WhatsApp Reminder", layout="centered")
-st.title("🕑 Daily WhatsApp Reminder")
+st.set_page_config(page_title="Daily SMS Reminder", layout="centered")
+st.title("📅 SMS Reminder App")
 
-# Twilio UI Inputs
+
+# --------------------------------
+# Twilio Credentials Input
+# --------------------------------
 st.subheader("🔐 Enter Twilio Credentials")
 
 sid = st.text_input("Twilio ACCOUNT SID")
 token = st.text_input("Twilio AUTH TOKEN", type="password")
 
-from_whatsapp = st.text_input(
-    "Twilio WhatsApp From Number",
-    placeholder="whatsapp:+14155238886"
+from_number = st.text_input(
+    "Twilio From Number",
+    placeholder="whatsapp:+14155238886 or +1234567890"
 )
 
-to_whatsapp = st.text_input(
-    "Your WhatsApp Number",
-    placeholder="whatsapp:+91XXXXXXXXXX"
+to_number = st.text_input(
+    "Your Number",
+    placeholder="whatsapp:+91XXXXXXXXXX or +91XXXXXXXXXX"
 )
 
 if st.button("Save Twilio Settings"):
-    if sid and token and from_whatsapp and to_whatsapp:
+    if sid and token and from_number and to_number:
         st.session_state.sid = sid
         st.session_state.token = token
-        st.session_state["from"] = from_whatsapp
-        st.session_state["to"] = to_whatsapp
-        st.success("Twilio settings saved successfully!")
+        st.session_state["from"] = from_number
+        st.session_state["to"] = to_number
+        st.success("Twilio settings saved!")
     else:
-        st.error("Please fill all fields before saving.")
+        st.error("Please fill all fields.")
 
 
-# Require Twilio details before showing reminder features
 if not all(k in st.session_state for k in ("sid", "token", "from", "to")):
-    st.warning("Enter Twilio details above to continue.")
+    st.warning("Enter Twilio settings above to continue.")
     st.stop()
 
 
 # -------------------------------
 # REMINDER FORM
 # -------------------------------
-st.subheader("➕ Add New Reminder")
+st.subheader("⏰ Add a Reminder")
 
 reminders = load_reminders()
 
 reminder_text = st.text_input("Reminder Text")
-reminder_time = st.time_input("Reminder Time", datetime.time(9, 0))
+
+reminder_date = st.date_input("Pick a Date", datetime.date.today())
+reminder_time = st.time_input("Pick Time", datetime.time(9, 0))
 
 if st.button("Save Reminder"):
+    reminder_datetime = datetime.datetime.combine(reminder_date, reminder_time)
     reminders.append({
         "text": reminder_text,
-        "time": reminder_time.strftime("%H:%M"),
+        "datetime": reminder_datetime.strftime("%Y-%m-%d %H:%M"),
         "sent": False
     })
     save_reminders(reminders)
-    st.success("Reminder saved successfully!")
+    st.success("Reminder saved!")
 
 
 # -------------------------------
-# SHOW SAVED REMINDERS
+# SHOW REMINDERS
 # -------------------------------
 st.subheader("📋 Saved Reminders")
+
 if len(reminders) == 0:
     st.info("No reminders yet.")
 else:
     for r in reminders:
-        st.write(f"- {r['text']} at **{r['time']}**")
-
+        st.write(f"- **{r['text']}** at `{r['datetime']}`")
 
 if st.button("Clear All Reminders"):
     save_reminders([])
